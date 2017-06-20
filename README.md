@@ -1,7 +1,7 @@
 # grbl-tools
 A collection (WIP) of gcode and GRBL related scripts and tools
 
-### autoleveler.py
+### autoprobe.py
 
 I wrote this script to autolevel gcode files that I use for PCB etching. The generated JSON is compatible with Chilipeppr GUI.
 
