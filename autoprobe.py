@@ -1,6 +1,8 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import json
+import numpy as np
+import os
 import re
 import sys
 
@@ -8,6 +10,7 @@ from argparse import ArgumentParser
 from datetime import datetime
 from itertools import product
 from numpy import linspace, where
+from scipy.interpolate import griddata
 from serial import Serial
 from time import sleep, time
 
@@ -219,31 +222,104 @@ class Probe():
         return json.dumps(self.probe_result)
 
 
+def correct_gcode(input_gcode, probe_json):
+    probe_json = json.loads(probe_json)
+
+    X = np.asarray([point['x'] for point in probe_json], np.double)
+    Y = np.asarray([point['y'] for point in probe_json], np.double)
+    points = np.vstack((X, Y)).T
+    values = np.asarray([point['z'] for point in probe_json], np.double)
+
+    regexps = {
+        'x': re.compile(r'x\s*(-?[0-9]+\.[0-9]+)', re.IGNORECASE),
+        'y': re.compile(r'y\s*(-?[0-9]+\.[0-9]+)', re.IGNORECASE),
+        'z': re.compile(r'z\s*(-?[0-9]+\.[0-9]+)', re.IGNORECASE),
+    }
+
+    # split input gcode by line, filtering empty lines
+    input_gcode = list(filter(lambda x: x, map(lambda x: x.strip(), input_gcode.split('\n'))))
+    cur_coords = np.asarray([np.nan] * 3, np.double)
+    result = []
+    for i, line in enumerate(input_gcode):
+        # skip comments
+        if line.startswith(';') or line.startswith('('):
+            continue
+
+        cur_line = ''
+        # update current gcode coordinates
+        for j, coord in enumerate(('x', 'y', 'z')):
+            match = regexps[coord].search(line)
+            if match:
+                cur_coords[j] = float(match.group(1))
+                # keep track of which coordinate we have found in this gcode line
+                cur_line += coord
+
+        # if this gcode line contains a Z coord, correct it
+        if 'z' in cur_line and sum(np.isnan(cur_coords)) == 0:
+            result.append((i, 'sub', cur_coords))
+        # no Z coord in this line, let's add it
+        elif 'x' in cur_line or 'y' in cur_line:
+            result.append((i, 'append', cur_coords))
+
+    # points that we need to adjust (x,y,z)
+    gcode_points = np.vstack(zip(*[item[2] for item in result])).T
+
+    # calculate new Z value for each point in gcode_points using both linear and nearest interpolation
+    newZval_lin = griddata(points, values, gcode_points[:, :2], method='linear') + gcode_points[:, 2]
+    newZval_near = griddata(points, values, gcode_points[:, :2], method='nearest') + gcode_points[:, 2]
+    for i, newZval in enumerate(newZval_lin):
+        j, action = result[i][:2]
+        # if the new Z value is nan, than the point is probably outside the probing grid
+        # we use the nearest point as an approximation
+        if np.isnan(newZval):
+            newZval = newZval_near[i]
+        # replace or add the new Z value
+        if action == 'sub':
+            input_gcode[j] = regexps['z'].sub('{:.5f}'.format(newZval), input_gcode[j])
+        else:
+            input_gcode[j] += ' Z{:.5f}'.format(newZval)
+
+    return '\n'.join(input_gcode).encode('ascii')
+
+
 def parse_args():
     # parse command line arguments
     parser = ArgumentParser(description='pcb surface autoprober')
+    subparsers = parser.add_subparsers(title='actions')
 
-    parser.add_argument('-i', metavar='INPUT_GCODE', dest='input_gcode',
-                        help='input gcode for automatic surface probing', required=True)
-    parser.add_argument('-o', dest='output_json', help='output JSON file containing probe points', required=True)
-    parser.add_argument('-g', '--grid', metavar='mm', type=float, dest='grid_spacing',
-                        help='probe grid spacing (mm)', required=True)
+    probe_parsers = subparsers.add_parser('probe', help='probe the surface and generate JSON report')
+    probe_parsers.set_defaults(which='probe')
+    probe_parsers.add_argument('-i', metavar='INPUT_GCODE', dest='input_gcode',
+                               help='input gcode for automatic surface probing', required=True)
+    probe_parsers.add_argument('-l', dest='output',
+                               help='output JSON file containing probe points', required=True)
+    probe_parsers.add_argument('-g', '--grid', metavar='mm', type=float, dest='grid_spacing',
+                               help='probe grid spacing (mm)', required=True)
+    probe_parsers.add_argument('-d', '--device', metavar='tty', dest='device',
+                               default='/dev/ttyUSB0', help='GRBL device')
+    probe_parsers.add_argument('-f', '--feed', metavar='mm/min', type=int, dest='feed_rate',
+                               default=5, help='probing feed rate on Z axis (default 5 mm/min)')
+    probe_parsers.add_argument('--maxz', metavar='mm', type=float, dest='max_z',
+                               default=.5, help='start probing at this Z axis value (default 0.5 mm)')
+    probe_parsers.add_argument('--minz', metavar='mm', type=float, dest='min_z',
+                               default=-.5, help='stop probing if Z axis reaches this value (default -0.5 mm)')
+    probe_parsers.add_argument('--overscan', metavar='mm', type=float, default=1.0, dest='overscan',
+                               help='probe grid overscan. the probe grid will be this value larger on every edge (mm)')
 
-    parser.add_argument('-d', '--device', metavar='tty', dest='device', default='/dev/ttyUSB0', help='GRBL device')
-    parser.add_argument('-f', '--feed', metavar='mm/min', type=int, dest='feed_rate',
-                        default=5, help='probing feed rate on Z axis (default 5 mm/min)')
-    parser.add_argument('--maxz', metavar='mm', type=float, dest='max_z',
-                        default=.5, help='start probing at this Z axis value (default 0.5 mm)')
-    parser.add_argument('--minz', metavar='mm', type=float, dest='min_z',
-                        default=-.5, help='stop probing if Z axis reaches this value (default -0.5 mm)')
-    parser.add_argument('--overscan', metavar='mm', type=float, default=1.0, dest='overscan',
-                        help='probe grid overscan. the probe grid will be this value larger on every edge (mm)')
+    correct_parsers = subparsers.add_parser('correct', help='correct the input gcode with the probing result')
+    correct_parsers.set_defaults(which='correct')
+    correct_parsers.add_argument(metavar='INPUT_GCODE', dest='input_gcode', help='input gcode file to be corrected')
+    correct_parsers.add_argument('-o', metavar='OUTPUT_GCODE', dest='output',
+                                 help='corrected output gcode file (default to lvl_<input_gcode_name>)')
+    correct_parsers.add_argument('-l', dest='input_json',
+                                 help='input JSON file containing probe points', required=True)
 
     args = parser.parse_args()
 
-    assert args.max_z > args.min_z
-    assert args.feed_rate > 0
-    assert args.grid_spacing > 0
+    if args.which == 'probe':
+        assert args.max_z > args.min_z
+        assert args.feed_rate > 0
+        assert args.grid_spacing > 0
 
     return args
 
@@ -251,30 +327,52 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
 
-    try:
-        with open(args.input_gcode, 'rb') as input_f:
-            input_gcode = input_f.read()
-    except IOError:
-        print('[E] Unable to open input file.')
-        sys.exit(1)
-    try:
-        with open(args.output_json, 'ab') as output_f:
-            pass
-    except IOError:
-        print('[E] Unable to write to output file.')
-        sys.exit(1)
+    if args.which in ['probe', 'correct']:
+        try:
+            with open(args.input_gcode, 'rb') as input_f:
+                input_gcode = input_f.read().decode('utf-8')
+        except IOError:
+            print('[E] Unable to open input file.')
+            sys.exit(1)
 
-    prober = Probe(args.device, input_gcode, args.grid_spacing,
-                   args.feed_rate, args.overscan, args.min_z, args.max_z)
-    prober.get_probe_coords()
-    if raw_input('[?] Do you want to probe the surface? [y/N] ') != 'y':
-        sys.exit(0)
-    prober.probe_origin()
-    try:
-        prober.probe_grid()
-        with open(args.output_json, 'wb') as output_f:
-            output_f.write(prober.get_json())
-        print('\n[I] All done.')
-    except KeyboardInterrupt:
-        prober.get_pos()
-    prober.return_home()
+        if not args.output:
+            dirname = os.path.dirname(args.input_gcode)
+            filename = os.path.basename(args.input_gcode)
+            args.output = os.path.join(dirname, 'lvl_{}'.format(filename))
+        try:
+            with open(args.output, 'ab') as output_f:
+                pass
+        except IOError:
+            print('[E] Unable to write to output file.')
+            sys.exit(1)
+
+    if args.which == 'probe':
+        prober = Probe(args.device, input_gcode, args.grid_spacing,
+                       args.feed_rate, args.overscan, args.min_z, args.max_z)
+        prober.get_probe_coords()
+        # python 2/3 compatibility
+        _input = getattr(__builtins__, 'raw_input', input)
+        if _input('[?] Do you want to probe the surface? [y/N] ') != 'y':
+            sys.exit(0)
+        prober.probe_origin()
+        try:
+            prober.probe_grid()
+            with open(args.output, 'wb') as output_f:
+                output_f.write(prober.get_json())
+            print('\n[I] All done.')
+        except KeyboardInterrupt:
+            prober.get_pos()
+        prober.return_home()
+
+    elif args.which == 'correct':
+        try:
+            with open(args.input_json, 'rb') as input_f:
+                input_json = input_f.read().decode('utf-8')
+        except IOError:
+            print('[E] Unable to open JSON file.')
+            sys.exit(1)
+
+        output_gcode = correct_gcode(input_gcode, input_json)
+        with open(args.output, 'wb') as output_f:
+            output_f.write(output_gcode)
+        print('[I] All done.')
