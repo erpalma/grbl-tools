@@ -9,7 +9,6 @@ import sys
 from argparse import ArgumentParser
 from datetime import datetime
 from itertools import product
-from numpy import linspace, where
 from scipy.interpolate import griddata
 from serial import Serial
 from time import sleep, time
@@ -157,11 +156,11 @@ class Probe():
 
         x_steps = int(round(abs(maxx - minx) / self.grid_spacing)) + 1
         x_spacing = abs(maxx - minx) / (x_steps - 1)
-        X = linspace(minx, maxx, x_steps)
+        X = np.linspace(minx, maxx, x_steps)
 
         y_steps = int(round(abs(maxy - miny) / self.grid_spacing)) + 1
         y_spacing = abs(maxy - miny) / (y_steps - 1)
-        Y = linspace(miny, maxy, y_steps)
+        Y = np.linspace(miny, maxy, y_steps)
 
         coords = list(product(X, Y))
 
@@ -210,8 +209,8 @@ class Probe():
                 "y": float(y),
                 "z": float(probe_point['z']),
                 "ts": now,
-                "xindx": int(where(self.X == x)[0][0]),
-                "yindx": int(where(self.Y == y)[0][0]),
+                "xindx": int(np.where(self.X == x)[0][0]),
+                "yindx": int(np.where(self.Y == y)[0][0]),
             }
             self.probe_result.append(result)
             print('z: {:.5f}'.format(result['z']))
