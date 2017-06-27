@@ -90,7 +90,7 @@ class Probe():
             if '<Idle|' in mpos:
                 break
             sleep(.25)
-        mpos = map(float, self.mpos_re.findall(mpos)[0])
+        mpos = tuple(map(float, self.mpos_re.findall(mpos)[0]))
         return {'x': mpos[0], 'y': mpos[1], 'z': mpos[2]}
 
     def get_pos(self):
@@ -100,7 +100,7 @@ class Probe():
     def probe(self, min_z, feed_rate, retract=None, zero_coords=False):
         resp = self.send('G38.3 Z{:.5f} F{:.0f}'.format(min_z, feed_rate))
         resp = self.probe_re.findall(resp)[0]
-        probe_point, probe_success = map(float, resp[:3]), bool(resp[-1])
+        probe_point, probe_success = tuple(map(float, resp[:3]), bool(resp[-1]))
         # zero out work coords
         if probe_success and zero_coords:
             # zero out work offset
@@ -141,8 +141,8 @@ class Probe():
 
     def get_workspace_size(self):
         # get all X and Y coords in the gcode file
-        X = map(float, self.x_coords_re.findall(self.input_gcode))
-        Y = map(float, self.y_coords_re.findall(self.input_gcode))
+        X = np.asarray(self.x_coords_re.findall(self.input_gcode), np.double)
+        Y = np.asarray(self.y_coords_re.findall(self.input_gcode), np.double)
         # find boundaries
         return min(X), max(X), min(Y), max(Y)
 
@@ -162,7 +162,7 @@ class Probe():
         y_spacing = abs(maxy - miny) / (y_steps - 1)
         Y = np.linspace(miny, maxy, y_steps)
 
-        coords = list(product(X, Y))
+        coords = tuple(product(X, Y))
 
         # sort probing coords in zig-zag to minimize path length
         sorted_coords = []
@@ -294,7 +294,7 @@ def parse_args():
                                help='output JSON file containing probe points', required=True)
     probe_parsers.add_argument('-g', '--grid', metavar='mm', type=float, dest='grid_spacing',
                                help='probe grid spacing (mm)', required=True)
-    probe_parsers.add_argument('-d', '--device', metavar='tty', dest='device',
+    probe_parsers.add_argument('-d', '--device', metavar='serial_device', dest='device',
                                default='/dev/ttyUSB0', help='GRBL device')
     probe_parsers.add_argument('-f', '--feed', metavar='mm/min', type=int, dest='feed_rate',
                                default=5, help='probing feed rate on Z axis (default 5 mm/min)')
