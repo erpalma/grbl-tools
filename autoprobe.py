@@ -28,6 +28,7 @@ class Probe():
         self.ser_timeout = 120
         self.fine_feed_probe = 1
         self.coarse_feed_probe = 40
+        self.z_max_travel = 40
         self.x_coords_re = re.compile(r'X\s*(-?[0-9]+(?:\.[0-9]+)?)')
         self.y_coords_re = re.compile(r'Y\s*(-?[0-9]+(?:\.[0-9]+)?)')
         self.mpos_re = re.compile(r'\|MPos:(-?[0-9]+\.[0-9]+),(-?[0-9]+\.[0-9]+),(-?[0-9]+\.[0-9]+)')
@@ -51,7 +52,7 @@ class Probe():
         # reset work coords
         self.send('G92X0Y0Z0')
         # set local relative offset
-        self.start_mpos = self.get_abs_pos()
+        self.zero_wpos = self.get_abs_pos()
 
     def send(self, data, newline=True):
         # open serial only on first send
@@ -85,7 +86,7 @@ class Probe():
         resp = {}
         for coord in 'xyz':
             if coord in coords:
-                resp[coord] = - self.start_mpos[coord] + coords[coord]
+                resp[coord] = - self.zero_wpos[coord] + coords[coord]
         return resp
 
     def get_abs_pos(self):
@@ -114,7 +115,7 @@ class Probe():
             # the probe touchdown (due to deceleration)
             self.send('G01Z0F1')
             # set new local relative offset
-            self.start_mpos = self.get_abs_pos()
+            self.zero_wpos = self.get_abs_pos()
         if retract is not None:
             self.send('G0Z{:.5f}'.format(retract))
         probe_point = {'x': probe_point[0], 'y': probe_point[1], 'z': 0. if zero_coords else probe_point[2]}
@@ -126,7 +127,7 @@ class Probe():
 
         # raise Z axis a bit to avoid potential alarm
         self.send('G0Z1')
-        if not self.probe(-50, self.coarse_feed_probe, zero_coords=True)[1]:
+        if not self.probe(-self.z_max_travel, self.coarse_feed_probe, zero_coords=True)[1]:
             print('\n\n[E] Probe error!')
             sys.exit(1)
         self.send('G1Z.1F10')
