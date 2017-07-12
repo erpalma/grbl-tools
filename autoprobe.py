@@ -105,6 +105,8 @@ class Probe():
         return self.get_rel_coord(self.get_abs_pos())
 
     def probe(self, min_z, feed_rate, retract=None, zero_coords=False):
+        assert(min_z < 0)
+        assert(retract is None or retract >= 0)
         resp = self.send('G38.3 Z{:.5f} F{:.0f}'.format(min_z, feed_rate))
         resp = self.probe_re.findall(resp)[0]
         probe_point, probe_success = tuple(map(float, resp[:3])), bool(resp[-1])
@@ -244,8 +246,8 @@ def correct_gcode(input_gcode, probe_json):
 
     # split input gcode by line, filtering empty lines
     input_gcode = list(filter(lambda x: x, map(lambda x: x.strip(), input_gcode.split('\n'))))
-    cur_coords = np.asarray([np.nan] * 3, np.double)
     result = []
+    cur_coords = [0] * 3
     for i, line in enumerate(input_gcode):
         # skip comments
         if line.startswith(';') or line.startswith('('):
