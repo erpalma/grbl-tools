@@ -238,11 +238,10 @@ def correct_gcode(input_gcode, probe_json):
     points = np.vstack((X, Y)).T
     values = np.asarray([point['z'] for point in probe_json], np.double)
 
-    regexps = {
-        'x': re.compile(r'x\s*(-?[0-9]+\.[0-9]+)', re.IGNORECASE),
-        'y': re.compile(r'y\s*(-?[0-9]+\.[0-9]+)', re.IGNORECASE),
-        'z': re.compile(r'z\s*(-?[0-9]+\.[0-9]+)', re.IGNORECASE),
-    }
+    regexps = {}
+    float_re = r'\s*(-?[0-9]+(:?\.[0-9]+)?)'
+    for coord in 'xyz':
+        regexps[coord] = re.compile(coord + float_re, re.IGNORECASE)
 
     # split input gcode by line, filtering empty lines
     input_gcode = list(filter(lambda x: x, map(lambda x: x.strip(), input_gcode.split('\n'))))
