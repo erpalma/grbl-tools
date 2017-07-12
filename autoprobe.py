@@ -262,12 +262,11 @@ def correct_gcode(input_gcode, probe_json):
                 cur_line += coord
 
         # if this gcode line contains a Z coord, correct it
-        if 'z' in cur_line and sum(np.isnan(cur_coords)) == 0:
-            result.append((i, 'sub', cur_coords))
+        if 'z' in cur_line:
+            result.append((i, 'sub', cur_coords[:]))
         # no Z coord in this line, let's add it
         elif 'x' in cur_line or 'y' in cur_line:
-            result.append((i, 'append', cur_coords))
-
+            result.append((i, 'append', cur_coords[:]))
     # points that we need to adjust (x,y,z)
     gcode_points = np.vstack(zip(*[item[2] for item in result])).T
 
