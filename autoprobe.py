@@ -54,16 +54,17 @@ class Probe():
         # set local relative offset
         self.zero_wpos = self.get_abs_pos()
 
-    def send(self, data, newline=True):
+    def send(self, data, newline=True, wait_for_idle=True):
         # open serial only on first send
         if self.ser is None:
             self.init_grbl()
         # wait for machine to be idle (not moving)
-        while True:
-            self.ser.write('?')
-            if '<Idle|' in self.ser.readline():  # and 'WCO' in mpos:
-                break
-            sleep(.25)
+        if wait_for_idle:
+            while True:
+                self.ser.write('?')
+                if '<Idle|' in self.ser.readline():
+                    break
+                sleep(.25)
         # send data and wait for answer
         self.ser.write(data + ('\n' if newline else ''))
         resp = self.ser.readline().strip()
