@@ -36,9 +36,14 @@ class Probe():
     def init_grbl(self):
         # open serial port and wait for welcome msg
         self.ser = Serial(self.device, 115200, timeout=self.ser_timeout)
-        while self.ser.readline().strip() != "Grbl 1.1f ['$' for help]":
-            pass
+        data = ''
+        while "Grbl 1.1f ['$' for help]" != data:
+            data = self.ser.readline().strip()
+        self.ser.timeout = 1
+        if '''[MSG:'$H'|'$X' to unlock]''' in self.ser.readline().strip():
+            self.send('$X', wait_for_idle=False)
         self.ser.reset_input_buffer()
+        self.ser.timeout = self.ser_timeout
         # set millimeter mode
         self.send('G21')
         # set adbsolute coords
