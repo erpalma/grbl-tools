@@ -107,11 +107,11 @@ class Probe():
     def probe(self, min_z, feed_rate, retract=None, zero_coords=False):
         resp = self.send('G38.3 Z{:.5f} F{:.0f}'.format(min_z, feed_rate))
         resp = self.probe_re.findall(resp)[0]
-        probe_point, probe_success = tuple(map(float, resp[:3]), bool(resp[-1]))
+        probe_point, probe_success = tuple(map(float, resp[:3])), bool(resp[-1])
         # zero out work coords
         if probe_success and zero_coords:
             # zero out work offset
-            self.send('G92Z{:.5f}'.format(self.get_abs_pos()['z'] - probe_success))
+            self.send('G92Z{:.5f}'.format(self.get_abs_pos()['z'] - probe_point[2]))
             # go to effective zero since probe might have stopped after
             # the probe touchdown (due to deceleration)
             self.send('G01Z0F1')
@@ -281,7 +281,7 @@ def correct_gcode(input_gcode, probe_json):
             newZval = newZval_near[i]
         # replace or add the new Z value
         if action == 'sub':
-            input_gcode[j] = regexps['z'].sub('{:.5f}'.format(newZval), input_gcode[j])
+            input_gcode[j] = regexps['z'].sub('Z{:.5f}'.format(newZval), input_gcode[j])
         else:
             input_gcode[j] += ' Z{:.5f}'.format(newZval)
 
