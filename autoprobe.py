@@ -314,9 +314,9 @@ def parse_args():
 
     correct_parsers = subparsers.add_parser('correct', help='correct the input gcode with the probing result')
     correct_parsers.set_defaults(which='correct')
-    correct_parsers.add_argument(metavar='INPUT_GCODE', dest='input_gcode', help='input gcode file to be corrected')
-    correct_parsers.add_argument('-o', metavar='OUTPUT_GCODE', dest='output',
-                                 help='corrected output gcode file (default to lvl_<input_gcode_name>)')
+    correct_parsers.add_argument(metavar='INPUT_GCODE', dest='input_gcode', help='input gcode file to be corrected', nargs='+')
+    # correct_parsers.add_argument('-o', metavar='OUTPUT_GCODE', dest='output',
+    #                              help='corrected output gcode file (default to lvl_<input_gcode_name>)')
     correct_parsers.add_argument('-l', dest='input_json',
                                  help='input JSON file containing probe points', required=True)
 
@@ -353,6 +353,20 @@ if __name__ == '__main__':
             sys.exit(1)
 
     if args.which == 'probe':
+        try:
+            with open(args.input_gcode, 'rb') as input_f:
+                input_gcode = input_f.read().decode('utf-8')
+        except IOError:
+            print('[E] Unable to open input file.')
+            sys.exit(1)
+
+        try:
+            with open(args.output, 'ab') as output_f:
+                pass
+        except IOError:
+            print('[E] Unable to write to output file.')
+            sys.exit(1)
+
         prober = Probe(args.device, input_gcode, args.grid_spacing,
                        args.feed_rate, args.overscan, args.min_z, args.max_z)
         prober.get_probe_coords()
@@ -378,7 +392,23 @@ if __name__ == '__main__':
             print('[E] Unable to open JSON file.')
             sys.exit(1)
 
-        output_gcode = correct_gcode(input_gcode, input_json)
-        with open(args.output, 'wb') as output_f:
-            output_f.write(output_gcode)
+        for fname in args.input_gcode:
+            try:
+                with open(fname, 'rb') as input_f:
+                    input_gcode = input_f.read().decode('utf-8')
+            except IOError:
+                print('[E] Unable to open input file.')
+                sys.exit(1)
+
+            output_gcode = correct_gcode(input_gcode, input_json)
+            dirname = os.path.dirname(fname)
+            filename = os.path.basename(fname)
+            try:
+                output = os.path.join(dirname, 'lvl_{}'.format(filename))
+                with open(output, 'wb') as output_f:
+                    output_f.write(output_gcode)
+            except IOError:
+                print('[E] Unable to write to output file.')
+                sys.exit(1)
+
         print('[I] All done.')
