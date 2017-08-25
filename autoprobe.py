@@ -163,11 +163,11 @@ class Probe():
             miny, maxy = miny - self.overscan, maxy + self.overscan
             print('[I] Probe area with overscan (WxH): {:.2f}mm x {:.2f}mm'.format(abs(maxx - minx), abs(maxy - miny)))
 
-        x_steps = int(round(abs(maxx - minx) / self.grid_spacing)) + 1
+        x_steps = max(2, int(round(abs(maxx - minx) / self.grid_spacing)) + 1)
         x_spacing = abs(maxx - minx) / (x_steps - 1)
         X = np.linspace(minx, maxx, x_steps)
 
-        y_steps = int(round(abs(maxy - miny) / self.grid_spacing)) + 1
+        y_steps = max(2, int(round(abs(maxy - miny) / self.grid_spacing)) + 1)
         y_spacing = abs(maxy - miny) / (y_steps - 1)
         Y = np.linspace(miny, maxy, y_steps)
 
