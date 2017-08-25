@@ -133,7 +133,7 @@ class Probe():
         if not self.probe(-self.z_max_travel, self.coarse_feed_probe, zero_coords=True)[1]:
             print('\n\n[E] Probe error!')
             sys.exit(1)
-        self.send('G1Z.1F10')
+        self.send('G1Z.1F1')
         sys.stdout.write('Done.\n[I] Zeroing Z in origin using fine mode (F{:.0f})... '.format(self.fine_feed_probe))
         sys.stdout.flush()
         if not self.probe(-.4, self.fine_feed_probe, zero_coords=True)[1]:
@@ -142,7 +142,7 @@ class Probe():
         print('Done.')
 
     def return_home(self):
-        print('\n[I] Returning home. X0 Y0 Z0.5')
+        print('\n[I] Returning home. X0 Y0 Z0.2')
         self.send('G0Z5')
         self.send('G0X0Y0')
         self.send('G0Z.5')
@@ -238,10 +238,11 @@ def correct_gcode(input_gcode, probe_json):
     points = np.vstack((X, Y)).T
     values = np.asarray([point['z'] for point in probe_json], np.double)
 
-    regexps = {}
-    float_re = r'\s*(-?[0-9]+(:?\.[0-9]+)?)'
-    for coord in 'xyz':
-        regexps[coord] = re.compile(coord + float_re, re.IGNORECASE)
+    regexps = {
+        'x': re.compile(r'x\s*(-?[0-9]+\.[0-9]+)', re.IGNORECASE),
+        'y': re.compile(r'y\s*(-?[0-9]+\.[0-9]+)', re.IGNORECASE),
+        'z': re.compile(r'z\s*(-?[0-9]+\.[0-9]+)', re.IGNORECASE),
+    }
 
     # split input gcode by line, filtering empty lines
     input_gcode = list(filter(lambda x: x, map(lambda x: x.strip(), input_gcode.split('\n'))))
