@@ -190,8 +190,8 @@ class Probe():
     def probe_grid(self):
         # probe the surface using the calculated grid
         self.probe_result = []
-        for x, y in self.probe_coords:
-            sys.stdout.write('[I] Probing x: {:.1f} y: {:.1f} '.format(x, y))
+        for i, (x, y) in enumerate(self.probe_coords):
+            sys.stdout.write('[{:03d}] Probing x: {:.1f} y: {:.1f} '.format(i + 1, x, y))
             sys.stdout.flush()
 
             # skip probing point X0 Y0 if exists
@@ -315,7 +315,8 @@ def parse_args():
 
     correct_parsers = subparsers.add_parser('correct', help='correct the input gcode with the probing result')
     correct_parsers.set_defaults(which='correct')
-    correct_parsers.add_argument(metavar='INPUT_GCODE', dest='input_gcode', help='input gcode file to be corrected', nargs='+')
+    correct_parsers.add_argument(metavar='INPUT_GCODE', dest='input_gcode',
+                                 help='input gcode file to be corrected', nargs='+')
     # correct_parsers.add_argument('-o', metavar='OUTPUT_GCODE', dest='output',
     #                              help='corrected output gcode file (default to lvl_<input_gcode_name>)')
     correct_parsers.add_argument('-l', dest='input_json',
