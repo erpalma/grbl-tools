@@ -7,7 +7,7 @@ import re
 import sys
 
 from argparse import ArgumentParser
-from datetime import datetime
+from datetime import datetime, timedelta
 from itertools import product
 from scipy.interpolate import griddata
 from serial import Serial
@@ -15,7 +15,6 @@ from time import sleep, time
 
 
 class Probe():
-
     def __init__(self, device, input_gcode, grid_spacing, feed_rate, overscan, min_z, max_z):
         self.ser = None
         self.device = device
@@ -87,7 +86,7 @@ class Probe():
         resp = {}
         for coord in 'xyz':
             if coord in coords:
-                resp[coord] = - self.zero_wpos[coord] + coords[coord]
+                resp[coord] = -self.zero_wpos[coord] + coords[coord]
         return resp
 
     def get_abs_pos(self):
@@ -105,8 +104,8 @@ class Probe():
         return self.get_rel_coord(self.get_abs_pos())
 
     def probe(self, min_z, feed_rate, retract=None, zero_coords=False):
-        assert(min_z < 0)
-        assert(retract is None or retract >= 0)
+        assert (min_z < 0)
+        assert (retract is None or retract >= 0)
         resp = self.send('G38.3 Z{:.5f} F{:.0f}'.format(min_z, feed_rate))
         resp = self.probe_re.findall(resp)[0]
         probe_point, probe_success = tuple(map(float, resp[:3])), bool(resp[-1])
@@ -190,6 +189,7 @@ class Probe():
     def probe_grid(self):
         # probe the surface using the calculated grid
         self.probe_result = []
+        start_t = time()
         for i, (x, y) in enumerate(self.probe_coords):
             sys.stdout.write('[{:03d}] Probing x: {:.1f} y: {:.1f} '.format(i + 1, x, y))
             sys.stdout.flush()
@@ -222,7 +222,9 @@ class Probe():
                 "yindx": int(np.where(self.Y == y)[0][0]),
             }
             self.probe_result.append(result)
-            print('z: {:.5f}'.format(result['z']))
+            elapsed_t = time() - start_t
+            eta_t = (elapsed_t / (i + 1)) * (len(self.probe_coords) - (i + 1))
+            print('z: {:.5f}\t\tETA: {}'.format(result['z'], timedelta(seconds=int(eta_t))))
         print('')
 
     def get_json(self):
@@ -296,31 +298,55 @@ def parse_args():
 
     probe_parsers = subparsers.add_parser('probe', help='probe the surface and generate JSON report')
     probe_parsers.set_defaults(which='probe')
-    probe_parsers.add_argument('-i', metavar='INPUT_GCODE', dest='input_gcode',
-                               help='input gcode for automatic surface probing', required=True)
-    probe_parsers.add_argument('-l', dest='output',
-                               help='output JSON file containing probe points', required=True)
-    probe_parsers.add_argument('-g', '--grid', metavar='mm', type=float, dest='grid_spacing',
-                               help='probe grid spacing (mm)', required=True)
-    probe_parsers.add_argument('-d', '--device', metavar='serial_device', dest='device',
-                               default='/dev/ttyUSB0', help='GRBL device')
-    probe_parsers.add_argument('-f', '--feed', metavar='mm/min', type=int, dest='feed_rate',
-                               default=5, help='probing feed rate on Z axis (default 5 mm/min)')
-    probe_parsers.add_argument('--maxz', metavar='mm', type=float, dest='max_z',
-                               default=.5, help='start probing at this Z axis value (default 0.5 mm)')
-    probe_parsers.add_argument('--minz', metavar='mm', type=float, dest='min_z',
-                               default=-.5, help='stop probing if Z axis reaches this value (default -0.5 mm)')
-    probe_parsers.add_argument('--overscan', metavar='mm', type=float, default=1.0, dest='overscan',
-                               help='probe grid overscan. the probe grid will be this value larger on every edge (mm)')
+    probe_parsers.add_argument(
+        '-i',
+        metavar='INPUT_GCODE',
+        dest='input_gcode',
+        help='input gcode for automatic surface probing',
+        required=True)
+    probe_parsers.add_argument('-l', dest='output', help='output JSON file containing probe points', required=True)
+    probe_parsers.add_argument(
+        '-g', '--grid', metavar='mm', type=float, dest='grid_spacing', help='probe grid spacing (mm)', required=True)
+    probe_parsers.add_argument(
+        '-d', '--device', metavar='serial_device', dest='device', default='/dev/ttyUSB0', help='GRBL device')
+    probe_parsers.add_argument(
+        '-f',
+        '--feed',
+        metavar='mm/min',
+        type=int,
+        dest='feed_rate',
+        default=5,
+        help='probing feed rate on Z axis (default 5 mm/min)')
+    probe_parsers.add_argument(
+        '--maxz',
+        metavar='mm',
+        type=float,
+        dest='max_z',
+        default=.5,
+        help='start probing at this Z axis value (default 0.5 mm)')
+    probe_parsers.add_argument(
+        '--minz',
+        metavar='mm',
+        type=float,
+        dest='min_z',
+        default=-.5,
+        help='stop probing if Z axis reaches this value (default -0.5 mm)')
+    probe_parsers.add_argument(
+        '--overscan',
+        metavar='mm',
+        type=float,
+        default=1.0,
+        dest='overscan',
+        help='probe grid overscan. the probe grid will be this value larger on every edge (mm)')
 
     correct_parsers = subparsers.add_parser('correct', help='correct the input gcode with the probing result')
     correct_parsers.set_defaults(which='correct')
-    correct_parsers.add_argument(metavar='INPUT_GCODE', dest='input_gcode',
-                                 help='input gcode file to be corrected', nargs='+')
+    correct_parsers.add_argument(
+        metavar='INPUT_GCODE', dest='input_gcode', help='input gcode file to be corrected', nargs='+')
     # correct_parsers.add_argument('-o', metavar='OUTPUT_GCODE', dest='output',
     #                              help='corrected output gcode file (default to lvl_<input_gcode_name>)')
-    correct_parsers.add_argument('-l', dest='input_json',
-                                 help='input JSON file containing probe points', required=True)
+    correct_parsers.add_argument(
+        '-l', dest='input_json', help='input JSON file containing probe points', required=True)
 
     args = parser.parse_args()
 
@@ -335,7 +361,7 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
 
-    if args.which in ['probe', 'correct']:
+    if args.which in ['probe']:
         try:
             with open(args.input_gcode, 'rb') as input_f:
                 input_gcode = input_f.read().decode('utf-8')
@@ -369,8 +395,8 @@ if __name__ == '__main__':
             print('[E] Unable to write to output file.')
             sys.exit(1)
 
-        prober = Probe(args.device, input_gcode, args.grid_spacing,
-                       args.feed_rate, args.overscan, args.min_z, args.max_z)
+        prober = Probe(args.device, input_gcode, args.grid_spacing, args.feed_rate, args.overscan, args.min_z,
+                       args.max_z)
         prober.get_probe_coords()
         # python 2/3 compatibility
         _input = getattr(__builtins__, 'raw_input', input)
